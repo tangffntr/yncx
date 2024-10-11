@@ -2,7 +2,7 @@ import requests
 import fiona
 from shapely.geometry import mapping
 import os
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon,MultiPolygon
 
 
 headers = {
@@ -65,12 +65,25 @@ def get_features(x1,y1,x2,y2,n):
 def download_geojson(file_path,features):
     # 检查文件是否存在，如果不存在则创建文件并写入初始数据
     if not os.path.exists(file_path):
-        with fiona.open(file_path, 'w', driver='GeoJSON', crs='EPSG:4490', schema={'geometry': 'Polygon', 'properties': {'ID': 'int'}}) as file:
+        with fiona.open(file_path, 'w', driver='GeoJSON', crs='EPSG:4490', schema={'geometry': 'MultiPolygon', 'properties': {'ID': 'int'}}) as file:
             for item in features:
-                polygon = Polygon([(coord['x'], coord['y']) for coord in item['geometry']['points']])
+
+                parts = item['geometry']['parts']
+                points = item['geometry']['points']
+                start_index = 0
+                polygons = []
+
+                for part in parts:
+                    end_index = start_index + part
+                    polygon = Polygon([(points[i]['x'], points[i]['y']) for i in range(start_index, end_index)])
+                    polygons.append(polygon)
+                    start_index = end_index
+
+                multi_polygon = MultiPolygon(polygons)
+
                 file.write({
                     'properties': {'ID': item['ID']},
-                    'geometry': mapping(polygon),
+                    'geometry': mapping(multi_polygon),
                 })
 
     else:
@@ -85,11 +98,25 @@ def download_geojson(file_path,features):
             # 遍历每组坐标数据
             for item in features:
                 if item['ID'] not in existing_ids:
-                    polygon = Polygon([(coord['x'], coord['y']) for coord in item['geometry']['points']])
+
+                    parts = item['geometry']['parts']
+                    points = item['geometry']['points']
+                    start_index = 0
+                    polygons = []
+                    for part in parts:
+                        end_index = start_index + part
+                        polygon = Polygon([(points[i]['x'], points[i]['y']) for i in range(start_index, end_index)])
+                        polygons.append(polygon)
+                        start_index = end_index
+
+                    multi_polygon = MultiPolygon(polygons)
+
                     file.write({
                         'properties': {'ID': item['ID']},
-                        'geometry': mapping(polygon),
+                        'geometry': mapping(multi_polygon),
                     })
+
+
 
 if __name__ == "__main__":
     # 默认最大查询1000片，建议不要修改
@@ -99,10 +126,10 @@ if __name__ == "__main__":
     file_path = 'yjnt.geojson'
 
     # 默认按矩形查找，传入左上与右下坐标，建议查询范围不要太大，爱护服务器
-    x1=121.333167
-    y1=32.2544
-    x2=121.33784
-    y2=32.25190
+    x1=107.09706
+    y1=37.18635
+    x2=107.09779
+    y2=37.18544
 
     fetures=get_features(x1,y1,x2,y2,expectCount)
     download_geojson(file_path,fetures)

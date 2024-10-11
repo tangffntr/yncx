@@ -65,7 +65,6 @@ if __name__ == "__main__":
 
 
 
-
 生成的geojson示例文件格式如下，可以直接导入gis软件生成矢量：
 ````
 {
@@ -97,3 +96,15 @@ if __name__ == "__main__":
 
 
 ![](/img/7.png)
+
+
+## 10-11更新
+感谢[salierib](https://github.com/salierib)的提醒，原先生成的geojson没有考虑面要素内部孔洞的问题
+
+![](./img/10.png)
+
+获取到的json数据中partTopo和parts对象区分了外部和内部顶点
+
+![](./img/9.png)
+
+这里修改使用MultiPolygon来处理内部孔
