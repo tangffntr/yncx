@@ -3,6 +3,7 @@ import fiona
 from shapely.geometry import mapping
 import os
 from shapely.geometry import Polygon,MultiPolygon
+from fiona.crs import from_epsg
 
 
 headers = {
@@ -116,15 +117,24 @@ def download_geojson(file_path,features):
                         'geometry': mapping(multi_polygon),
                     })
 
-
+def convert_geojson_to_shapefile(input_geojson, output_shapefile):
+    with fiona.open(input_geojson, 'r') as source:
+        with fiona.open(
+                output_shapefile, 'w',
+                driver='ESRI Shapefile',
+                crs=from_epsg(4490),  # 设置坐标系，根据实际情况修改
+                schema=source.schema
+        ) as sink:
+            for feature in source:
+                sink.write(feature)
 
 if __name__ == "__main__":
     # 默认最大查询1000片，建议不要修改
     expectCount=1000
 
     # 保存文件路径
-    file_path = 'yjnt.geojson'
-
+    file_path_geojson = '1.geojson'
+    file_path_shp='1.shp'
     # 默认按矩形查找，传入左上与右下坐标，建议查询范围不要太大，爱护服务器
     x1=107.09706
     y1=37.18635
@@ -132,4 +142,7 @@ if __name__ == "__main__":
     y2=37.18544
 
     fetures=get_features(x1,y1,x2,y2,expectCount)
-    download_geojson(file_path,fetures)
+    download_geojson(file_path_geojson,fetures)
+
+    #输出为shp格式
+    convert_geojson_to_shapefile(file_path_geojson, file_path_shp)
