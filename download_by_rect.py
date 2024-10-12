@@ -2,29 +2,15 @@ import requests
 import fiona
 from shapely.geometry import mapping
 import os
-from shapely.geometry import Polygon,MultiPolygon
+from shapely.geometry import Polygon
 from fiona.crs import from_epsg
 
 
-headers = {
-    "Accept": "*/*",
-    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-    "Connection": "keep-alive",
-    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-    "Origin": "https://yncx.mnr.gov.cn",
-    "Referer": "https://yncx.mnr.gov.cn/yn/",
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-origin",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0",
-    "^sec-ch-ua": "^\\^Not/A)Brand^^;v=^\\^8^^, ^\\^Chromium^^;v=^\\^126^^, ^\\^Microsoft",
-    "sec-ch-ua-mobile": "?0",
-    "^sec-ch-ua-platform": "^\\^Windows^^^"
-}
+headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0",
+           }
 url = "https://yncx.mnr.gov.cn/7H8i9J0k1L2m3N4o5p6Q7R8s9T0u1V2w3X4y5Z6/queryResults.json"
-params = {
-    "returnContent": "true"
-}
+
+params = {"returnContent": "true"}
 def get_features(x1,y1,x2,y2,n):
     form_data = {
         'queryMode': 'SpatialQuery',
@@ -57,66 +43,62 @@ def get_features(x1,y1,x2,y2,n):
         'spatialQueryMode': "INTERSECT"
     }
 
-
     response = requests.post(url, headers=headers, params=params, json=form_data)
     jsondata=response.json()
     features=jsondata["recordsets"][0]["features"]
+
     return features
 
+
 def download_geojson(file_path,features):
+    def create_polygon(feature):   #处理单个几何
+        parts = feature['geometry']['parts']
+        points = feature['geometry']['points']
+        start_index = 0
+        exterior_ring = []
+        interior_rings = []
+
+        for part in parts:
+            end_index = start_index + part
+            ring = [(points[i]['x'], points[i]['y']) for i in range(start_index, end_index)]
+
+            if not exterior_ring:  # 如果外部边界尚未设置，则这是外部边界
+                exterior_ring = ring
+            else:  # 否则，这是一个内部边界
+                interior_rings.append(ring)
+            start_index = end_index
+
+        # 如果没有内部边界，Polygon 只需要外部边界
+        if not interior_rings:
+            polygon = Polygon(exterior_ring)
+        else:
+        # 创建Polygon对象，第一个参数是外部边界，第二个参数是一个内部边界的列表
+            polygon = Polygon(exterior_ring, holes=interior_rings)
+
+        return polygon
+
     # 检查文件是否存在，如果不存在则创建文件并写入初始数据
     if not os.path.exists(file_path):
-        with fiona.open(file_path, 'w', driver='GeoJSON', crs='EPSG:4490', schema={'geometry': 'MultiPolygon', 'properties': {'ID': 'int'}}) as file:
-            for item in features:
-
-                parts = item['geometry']['parts']
-                points = item['geometry']['points']
-                start_index = 0
-                polygons = []
-
-                for part in parts:
-                    end_index = start_index + part
-                    polygon = Polygon([(points[i]['x'], points[i]['y']) for i in range(start_index, end_index)])
-                    polygons.append(polygon)
-                    start_index = end_index
-
-                multi_polygon = MultiPolygon(polygons)
-
+        with fiona.open(file_path, 'w', driver='GeoJSON', crs='EPSG:4490', schema={'geometry': 'Polygon', 'properties': {'ID': 'int'}}) as file:
+            for feature in features:
                 file.write({
-                    'properties': {'ID': item['ID']},
-                    'geometry': mapping(multi_polygon),
+                    'properties': {'ID': feature['ID']},
+                    'geometry': mapping(create_polygon(feature))
                 })
 
+    # 如果文件已经存在则增量保存，通过ID去重
     else:
-        # 读取已有数据的ID列表
         existing_ids = []
         with fiona.open(file_path, 'r') as file:
             for feature in file:
                 existing_ids.append(feature['properties']['ID'])
-
-        # 打开GeoJSON文件以追加模式写入
         with fiona.open(file_path, 'a') as file:
-            # 遍历每组坐标数据
-            for item in features:
-                if item['ID'] not in existing_ids:
-
-                    parts = item['geometry']['parts']
-                    points = item['geometry']['points']
-                    start_index = 0
-                    polygons = []
-                    for part in parts:
-                        end_index = start_index + part
-                        polygon = Polygon([(points[i]['x'], points[i]['y']) for i in range(start_index, end_index)])
-                        polygons.append(polygon)
-                        start_index = end_index
-
-                    multi_polygon = MultiPolygon(polygons)
-
+            for feature in features:
+                if feature['ID'] not in existing_ids:
                     file.write({
-                        'properties': {'ID': item['ID']},
-                        'geometry': mapping(multi_polygon),
+                        'properties': {'ID': feature['ID']},
+                        'geometry': mapping(create_polygon(feature))
                     })
-
 def convert_geojson_to_shapefile(input_geojson, output_shapefile):
     with fiona.open(input_geojson, 'r') as source:
         with fiona.open(
@@ -128,21 +110,23 @@ def convert_geojson_to_shapefile(input_geojson, output_shapefile):
             for feature in source:
                 sink.write(feature)
 
+
 if __name__ == "__main__":
     # 默认最大查询1000片，建议不要修改
     expectCount=1000
 
     # 保存文件路径
     file_path_geojson = '1.geojson'
-    file_path_shp='1.shp'
+
     # 默认按矩形查找，传入左上与右下坐标，建议查询范围不要太大，爱护服务器
-    x1=107.09706
-    y1=37.18635
-    x2=107.09779
-    y2=37.18544
+    x1=120.63954
+    y1=32.43703
+    x2=120.6456
+    y2=32.43089
 
     fetures=get_features(x1,y1,x2,y2,expectCount)
     download_geojson(file_path_geojson,fetures)
 
     #输出为shp格式
-    convert_geojson_to_shapefile(file_path_geojson, file_path_shp)
+    # file_path_shp='1.shp'
+    # convert_geojson_to_shapefile(file_path_geojson, file_path_shp)

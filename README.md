@@ -3,7 +3,7 @@
 
 [永久基本农田查询平台](https://yncx.mnr.gov.cn/yn/#/home)
 
-## 网页查询突破500亩限制
+## 1、网页查询突破500亩限制
 网站提供了点查询和范围查询，但是限制了500亩范围,直接上才艺
 ![](./img/1.png)
 
@@ -18,7 +18,7 @@
 
 注意的是这里直接修改网页js是无法生效的，需要在替换文件夹中进行修改
 
-## PYTHON获取矢量数据
+## 2、PYTHON获取矢量数据
 
 **从网页查询就能看出来这就是一个矢量叠加影像**
 
@@ -26,25 +26,58 @@
 
 ![](./img/6.png)
 
-载荷信息里也是一个json数据
+### 2.1 矩形范围查找
+使用网页的绘制范围绘制一个矩形范围进行查找，可以看到网页请求携带了这4个顶点坐标，服务器根据这4个顶点坐标生成了多边形然后在数据库查找返回
 
-这里网页中的type是point，我估计这里也是可以使用region来传参（可以直接提取行政区边界，或者其他复杂面要素的边界）
+由于500亩的查询范围和1000片图斑的限制都是在前端验证的，这里使用脚本可以无需验证判断
 
-建议使用矩形小范围查询，传入4个顶点坐标，加上起点坐标形成闭合面 
+#### 矩形范围查询的示例
 
-![](./img/8.png)
+**expectCount**：默认为1000，限制了最大查询图斑数量
 
-为了方便查询这里直接默认是用矩形查询，只需要对端顶点坐标即可
+**epsgCode**：默认为4490，坐标系为CGCS2000
 
-设置好文件的存储路径
+**spatialQueryMode**：INTERSECT使用几何相交查询
 
-默认查询的个数为1000个，建议不要修改
+**points**：在geometry对象中需要传入区域的顶点坐标，矩形直接使用两个顶点坐标即可
 
-支持追加保存，通过面要素的ID去重，可以将多次查询的结果保存在一起
+如果使用多边形多个顶点也是可以的，修改顶点个数即可，points属性中的id字段需要唯一生成
 
-坐标系为CGCS2000
+可以看到这里使用的是超图supermap
 
-
+```
+form_data = {
+    'queryMode': 'SpatialQuery',
+    'queryParameters': {
+        'customParams': None,
+        'prjCoordSys': {'epsgCode': 4490},
+        'expectCount': n,
+        'networkType': "LINE",
+        'queryOption': "ATTRIBUTEANDGEOMETRY",
+        'queryParams': [{'name': "pro31@yndk", 'attributeFilter': "1=1", 'fields': None}],
+        'startRecord': 0,
+        'holdTime': 10,
+        'returnCustomResult': False,
+        'returnFeatureWithFieldCaption': False
+    },
+    'geometry': {
+        'id': 0,
+        'style': None,
+        'parts': [5],
+        'points': [
+            {'id': "SuperMap.Geometry_1", 'bounds': None, 'SRID': None, 'x': x1, 'y': y1, 'tag': None, 'type': "Point", 'geometryType': "Point"},
+            {'id': "SuperMap.Geometry_2", 'bounds': None, 'SRID': None, 'x': x2, 'y': y1, 'tag': None, 'type': "Point", 'geometryType': "Point"},
+            {'id': "SuperMap.Geometry_3", 'bounds': None, 'SRID': None, 'x': x2, 'y': y2, 'tag': None, 'type': "Point", 'geometryType': "Point"},
+            {'id': "SuperMap.Geometry_4", 'bounds': None, 'SRID': None, 'x': x1, 'y': y2, 'tag': None, 'type': "Point", 'geometryType': "Point"},
+            {'id': "SuperMap.Geometry_5", 'bounds': None, 'SRID': None, 'x': x1, 'y': y1, 'tag': None, 'type': "Point", 'geometryType': "Point"}
+        ],
+        'type': "REGION",
+        'prjCoordSys': {'epsgCode': None}
+    },
+    'spatialQueryMode': "INTERSECT"
+}
+```
+**运行示例**
 
 ````
 if __name__ == "__main__":
@@ -62,7 +95,6 @@ if __name__ == "__main__":
     download_geojson(file_path,fetures)
 
 ````
-
 
 
 生成的geojson示例文件格式如下，可以直接导入gis软件生成矢量：
@@ -90,7 +122,7 @@ if __name__ == "__main__":
 
 ````
 
-## 成果展示
+#### 成果展示
 
 直接在GIS软件中加载，可以叠加谷歌影像等查看，能够缩放到更高的比例
 
@@ -98,7 +130,7 @@ if __name__ == "__main__":
 ![](/img/7.png)
 
 
-## 10-11更新
+#### 10-11更新
 感谢[salierib](https://github.com/salierib)的提醒，原先生成的geojson没有考虑面要素内部孔洞的问题
 
 ![](./img/10.png)
@@ -107,4 +139,75 @@ if __name__ == "__main__":
 
 ![](./img/9.png)
 
-这里修改使用MultiPolygon来处理内部孔
+这里修改判断是否存在孔洞使用polygon的holes传参
+
+```
+for part in parts:
+    end_index = start_index + part
+    ring = [(points[i]['x'], points[i]['y']) for i in range(start_index, end_index)]
+
+    if not exterior_ring:  # 如果外部边界尚未设置，则这是外部边界
+        exterior_ring = ring
+    else:  # 否则，这是一个内部边界
+        interior_rings.append(ring)
+    start_index = end_index
+
+# 如果没有内部边界，Polygon 只需要外部边界
+if not interior_rings:
+    polygon = Polygon(exterior_ring)
+else:
+# 创建Polygon对象，第一个参数是外部边界，第二个参数是一个内部边界的列表
+    polygon = Polygon(exterior_ring, holes=interior_rings)
+```
+### 2.2多边形查询
+
+由于网页端设置了500亩和1000片的查询限制，我们直接突破限制查询可能会带来不必要的麻烦
+
+建议还是按照网页端查询的规则来，模拟更真实的请求
+
+另外网页端对每天的查询次数，每个IP的查询次数都是有限制的，虽然都是在前端完成的
+
+但是这些措施都是为了防止请多过多、数据量过大给服务器带来压力
+
+按照500亩的范围来查询，想要获得一个较大的区域如何来实现呢
+
+你可能已经想到了，直接切割为更小的单元来进行
+
+- 获取给定多边形的最大坐标边界，计算出宽和高，按照最小的粒度计算需要切割的瓦片数（500亩大概是577*577的网格）
+
+- 计算出每个瓦片对应的度数
+
+- 根据行列号遍历获取每个网格顶点坐标，使用2.1的矩形下载
+
+![](./img/栅格.png)
+
+#### 示例代码
+
+这里通过读取geojson文件的几何来获取多边形的边界
+
+```
+if __name__ == '__main__':
+    # 读取GeoJSON文件，获取第一个多边形，多个自行遍历
+    file_path = 'example.geojson'
+    gdf = gpd.read_file(file_path)
+    polygon = gdf.geometry.iloc[0]
+
+    # 定义栅格大小,限制面积500亩,这里设置为500*500米
+    grid_size = 500
+
+    # 设置保存路径
+    savefile_path = 'download_example.geojson'
+
+    #下载栅格
+    failure_grids=download_by_girds(polygon, grid_size, savefile_path)
+
+    #保存下载失败栅格坐标，后续可以直接使用矩形查找增加
+    with open('failure_girds', 'w') as file:
+        json.dump(failure_grids, file)
+
+```
+#### 成果展示
+
+完整的下载后可以按需裁剪为范围内
+
+![](./img/栅格下载.png)
