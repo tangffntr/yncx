@@ -4,50 +4,65 @@ from shapely.geometry import mapping
 import os
 from shapely.geometry import Polygon
 from fiona.crs import from_epsg
-
+import json
 
 headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0",
            }
-url = "https://yncx.mnr.gov.cn/7H8i9J0k1L2m3N4o5p6Q7R8s9T0u1V2w3X4y5Z6/queryResults.json"
+url = "https://yncx.mnr.gov.cn/dist-app-yn/map/queryResults.json"
 
-params = {"returnContent": "true"}
+params = {"returnContent": "true",
+          'token':'Whe67hpdoYaBsTRmdzFkEfWcUyHkFuwQOuKgXDHEOv2deNvj0VbufUWA2w0297kDBDa5T_1V6__VvI1lHY7_fMwl'}
 def get_features(x1,y1,x2,y2,n):
     form_data = {
         'queryMode': 'SpatialQuery',
         'queryParameters': {
-            'customParams': None,
             'prjCoordSys': {'epsgCode': 4490},
             'expectCount': n,
-            'networkType': "LINE",
-            'queryOption': "ATTRIBUTEANDGEOMETRY",
-            'queryParams': [{'name': "pro31@yndk", 'attributeFilter': "1=1", 'fields': None}],
+            'queryParams': [{'name': "pro31@yndk", 'attributeFilter': "1=1", 'fields': ['yjjbntmj','yjjbnttbbh']}],
             'startRecord': 0,
-            'holdTime': 10,
-            'returnCustomResult': False,
-            'returnFeatureWithFieldCaption': False
         },
         'geometry': {
-            'id': 0,
+            'id': None,
             'style': None,
             'parts': [5],
             'points': [
-                {'id': "SuperMap.Geometry_1", 'bounds': None, 'SRID': None, 'x': x1, 'y': y1, 'tag': None, 'type': "Point", 'geometryType': "Point"},
-                {'id': "SuperMap.Geometry_2", 'bounds': None, 'SRID': None, 'x': x2, 'y': y1, 'tag': None, 'type': "Point", 'geometryType': "Point"},
-                {'id': "SuperMap.Geometry_3", 'bounds': None, 'SRID': None, 'x': x2, 'y': y2, 'tag': None, 'type': "Point", 'geometryType': "Point"},
-                {'id': "SuperMap.Geometry_4", 'bounds': None, 'SRID': None, 'x': x1, 'y': y2, 'tag': None, 'type': "Point", 'geometryType': "Point"},
-                {'id': "SuperMap.Geometry_5", 'bounds': None, 'SRID': None, 'x': x1, 'y': y1, 'tag': None, 'type': "Point", 'geometryType': "Point"}
+                {'CLASS_NAME':'SuperMap.Geometry.Point','id': "SuperMap.Geometry_1", 'bounds': None, 'SRID': None, 'x': x1, 'y': y1, 'tag': None, 'type': "Point", 'geometryType': "Point"},
+                {'CLASS_NAME':'SuperMap.Geometry.Point','id': "SuperMap.Geometry_2", 'bounds': None, 'SRID': None, 'x': x2, 'y': y1, 'tag': None, 'type': "Point", 'geometryType': "Point"},
+                {'CLASS_NAME':'SuperMap.Geometry.Point','id': "SuperMap.Geometry_3", 'bounds': None, 'SRID': None, 'x': x2, 'y': y2, 'tag': None, 'type': "Point", 'geometryType': "Point"},
+                {'CLASS_NAME':'SuperMap.Geometry.Point','id': "SuperMap.Geometry_4", 'bounds': None, 'SRID': None, 'x': x1, 'y': y2, 'tag': None, 'type': "Point", 'geometryType': "Point"},
+                {'CLASS_NAME':'SuperMap.Geometry.Point','id': "SuperMap.Geometry_5", 'bounds': None, 'SRID': None, 'x': x1, 'y': y1, 'tag': None, 'type': "Point", 'geometryType': "Point"}
             ],
             'type': "REGION",
-            'prjCoordSys': {'epsgCode': None}
+            'prjCoordSys': {'epsgCode': 4490}
         },
         'spatialQueryMode': "INTERSECT"
     }
 
     response = requests.post(url, headers=headers, params=params, json=form_data)
     jsondata=response.json()
+    # features=jsondata["recordsets"][0]["features"]
+
+    data=jsondata['data']
+
+
+
+    return data
+
+
+from gmssl import sm2
+
+def decrypt_geojson(data,key):
+
+    if data and data.startswith("04"):
+        data = data[2:]
+    sm2_crypt = sm2.CryptSM2(public_key="", private_key=key,mode=1)
+    features = sm2_crypt.decrypt(bytes.fromhex(data))
+    features=features.decode('utf-8')
+    jsondata=json.loads(features)
     features=jsondata["recordsets"][0]["features"]
 
     return features
+
 
 
 def download_geojson(file_path,features):
@@ -116,7 +131,7 @@ if __name__ == "__main__":
     expectCount=1000
 
     # 保存文件路径
-    file_path_geojson = '1.geojson'
+    file_path_geojson = '2.geojson'
 
     # 默认按矩形查找，传入左上与右下坐标，建议查询范围不要太大，爱护服务器
     x1=120.63954
@@ -124,9 +139,15 @@ if __name__ == "__main__":
     x2=120.6456
     y2=32.43089
 
+    key='fe32f6eb62706f559d46f77011474d72a40707135badcfc7a59dad09948895f5'
+
     fetures=get_features(x1,y1,x2,y2,expectCount)
+
+    fetures=decrypt_geojson(fetures,key)
+
     download_geojson(file_path_geojson,fetures)
 
     #输出为shp格式
     # file_path_shp='1.shp'
     # convert_geojson_to_shapefile(file_path_geojson, file_path_shp)
+

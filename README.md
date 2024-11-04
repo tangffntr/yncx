@@ -3,6 +3,42 @@
 
 [永久基本农田查询平台](https://yncx.mnr.gov.cn/yn/#/home)
 
+
+## 11-04更新
+
+网站目前已经不在直接返回JSON数据了，查看网页使用了sm2加密，找到这个私钥直接进行模拟解密就可以了
+
+请求数据中还增加了个token目前看来是个固定值
+
+![](./img/11.png)
+
+![](./img/12.png)
+
+这里使用gmssl库来模拟sm2解密，传入请求的数据以及私钥
+
+```
+from gmssl import sm2
+def decrypt_geojson(data,key):
+
+    if data and data.startswith("04"):
+        data = data[2:]
+    sm2_crypt = sm2.CryptSM2(public_key="", private_key=key,mode=1)
+    features = sm2_crypt.decrypt(bytes.fromhex(data))
+    features=features.decode('utf-8')
+    jsondata=json.loads(features)
+    features=jsondata["recordsets"][0]["features"]
+
+    return features
+
+```
+
+
+
+
+
+
+
+
 ## 1、网页查询突破500亩限制
 网站提供了点查询和范围查询，但是限制了500亩范围,直接上才艺
 ![](./img/1.png)
