@@ -139,7 +139,7 @@ if __name__ == "__main__":
     x2=120.6456
     y2=32.43089
 
-    key='fe32f6eb62706f559d46f77011474d72a40707135badcfc7a59dad09948895f5'
+    key=''  #请自行网页中查找
 
     fetures=get_features(x1,y1,x2,y2,expectCount)
 
